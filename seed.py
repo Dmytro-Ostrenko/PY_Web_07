@@ -1,66 +1,73 @@
-from sqlalchemy import create_engine, Column, Integer, String, Date, ForeignKey
-from sqlalchemy.orm import sessionmaker, relationship, Mapped
 from faker import Faker
-import sqlite3
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from models import Base, Student, Group, Lector, Subject, Grade
 import random
-import datetime
+from db import session
+from datetime import datetime, timedelta
 import string
-import csv
-from models import Base, Group, Student, Lector, Subject, Grade
 
-engine = create_engine('sqlite:///database_HW7.db')
-Base.metadata.bind = engine
-DBSession = sessionmaker(bind=engine)
-session = DBSession()
-
+# Підключення до бази даних PostgreSQL
 fake = Faker()
+# engine = create_engine('postgresql://Dmytro:1234@localhost:5432/database_HW7.db')
+# Base.metadata.create_all(engine)
+# Session = sessionmaker(bind=engine)
+# session = Session()
 
-sub = 7  # кількість предметів
-group = 3  # кількість груп
-students_per_group = 50  # кількість студентів у групі
-quantity_lector = 10  # кількість викладачів
-min_grade = 60  # мінімальна оцінка
-max_grade = 100  # максимальна оцінка
+# Очищення таблиць перед додаванням нових записів
+session.query(Grade).delete()
+session.query(Student).delete()
+session.query(Subject).delete()
+session.query(Lector).delete()
+session.query(Group).delete()
 
-# Створення груп
-for _ in range(group):
-    group_name = 'Group ' + ''.join(random.choices(string.ascii_uppercase + string.digits, k=2))
-    session.add(Group(name=group_name))
-session.commit()
+# Генеруємо групи
+group_names = ["A", "B", "C"]
+students_per_group = 50
+grades_range = range(60, 101)
 
-# Створення студентів для кожної групи
-for group in session.query(Group):
+for name in group_names:
+    group = Group(name=f"Group {name}")
+    session.add(group)
+
+# Генеруємо студентів
+for group_id in range(1, len(group_names) + 1):
     for _ in range(students_per_group):
-        name = fake.name()
-        session.add(Student(name=name, group_id=group.group_id))
+        student = Student(name=fake.name(), group_id=group_id)
+        session.add(student)
+
+# Генеруємо викладачів
+for _ in range(3):
+    lector = Lector(name=fake.name())
+    session.add(lector)
+
+# Генеруємо предмети
+subjects_list = ["Electrical engineering", "Mathematics", "Physics", "Programming", "Math modeling", "Alternative energy", "Automation"]
+lectors = session.query(Lector).all()
+for name in subjects_list:
+    lector_id = random.randint(1, 3)
+    subject = Subject(name=name, lector_id=lector_id)
+    session.add(subject)
+
 session.commit()
 
-# Створення викладачів
-for _ in range(quantity_lector):
-    session.add(Lector(name=fake.name()))
+subjects = session.query(Subject).all() 
+
+start_date = datetime(2023, 9, 1)
+end_date = datetime.now()
+time_difference = end_date - start_date
+
+# Генеруємо оцінки для студентів за предмети
+for student_id in range(1, students_per_group * len(group_names) + 1):
+    num_grades = random.randint(5, 20)  # Випадкова кількість оцінок для кожного студента
+    for _ in range(num_grades):
+        subject = random.choice(subjects)
+        grade = random.choice(grades_range)
+        random_days_difference = random.randint(0, (end_date - start_date).days)
+        timestamp = start_date + timedelta(days=random_days_difference)
+        new_grade = Grade(grade=grade, date_received=timestamp, subject_id=subject.subject_id, student_id=student_id)
+        session.add(new_grade)
+
 session.commit()
-
-# Створення предметів для кожного викладача
-for lector in session.query(Lector):
-    for _ in range(sub // quantity_lector):
-        subject_name = fake.job()
-        session.add(Subject(name=subject_name, lector_id=lector.lector_id))
-session.commit()
-
-# Створення оцінок для студентів
-start_date = datetime.date(2023, 9, 1)  # Початкова дата
-for student in session.query(Student):
-    for _ in range(random.randint(5, 20)):
-        lector = random.choice(session.query(Lector).all())
-        subjects_for_lector = session.query(Subject).filter_by(lector_id=lector.lector_id).all()
-        if subjects_for_lector:  # Перевірка, чи є предмети для даного викладача
-            subject = random.choice(subjects_for_lector)
-            grade = random.randint(min_grade, max_grade)
-            date_received = fake.date_between(start_date=start_date, end_date='today')
-            session.add(Grade(student_id=student.student_id, subject_id=subject.subject_id, grade=grade, date_received=date_received))
-session.commit()
-
-
 session.close()
-engine.dispose()
 
